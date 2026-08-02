@@ -60,7 +60,7 @@ Then just ask about a file — *"profile data/orders.csv"*, *"what's wrong with 
 
 ## The tool
 
-### `profile_dataset(path, sample_rows=50000, max_columns=100, top_k=5)`
+### `profile_dataset(path, sample_rows=50000, max_columns=100, top_k=5, sheet=None)`
 
 | Argument | Default | Meaning |
 | --- | --- | --- |
@@ -68,6 +68,7 @@ Then just ask about a file — *"profile data/orders.csv"*, *"what's wrong with 
 | `sample_rows` | `50000` | Rows to read. `null` reads everything (exact, slower) |
 | `max_columns` | `100` | Cap on columns described, so wide tables stay small |
 | `top_k` | `5` | Frequent values listed per categorical column |
+| `sheet` | first sheet | Which Excel sheet to profile, by name |
 
 **Formats:** `.csv` `.tsv` `.parquet` `.json` `.jsonl` `.ndjson` `.xlsx` `.xls`
 
@@ -132,6 +133,8 @@ Real output, abbreviated:
 
 **Honest sampling.** Large files are profiled from a sample, but the result always carries `"sampled": true` and the true row count — a silently sampled statistic is a wrong statistic. Row counts come from Parquet metadata or a newline scan, never a full read.
 
+**No silent wrong answers.** The same rule applies wherever a default could mislead. A workbook's first sheet is often a title page, so every Excel profile names the sheet it used and lists the others rather than reporting an empty sheet as a clean dataset. CSV delimiters are detected by testing candidates for a stable column count, which handles the semicolon files common in European open data without the header-mangling that character-frequency sniffers cause.
+
 **Path safety.** `--root` confines profiling to one directory. Paths are canonicalised first, so `..` and symlinks cannot escape.
 
 ## Limitations
@@ -141,6 +144,7 @@ Real output, abbreviated:
 - **Row-oriented.** No cross-column correlations, outlier detection, or plots.
 - **pandas parsing rules apply.** The profile shows what pandas sees, which is what your own code will see. Notably, `"NA"`, `"N/A"`, and `"None"` are read as *missing*, so a region column containing `"NA"` for North America will report nulls. That is a real trap worth knowing about, and this tool surfaces it rather than hiding it.
 - **Nested JSON** is not flattened; unhashable cells make the duplicate check inapplicable (reported as `null`).
+- **One Excel sheet at a time.** The profile names the sheet it read and lists the rest; pass `sheet` to switch.
 
 ## Development
 

@@ -56,6 +56,7 @@ def profile_dataset_tool(
     sample_rows: int | None = DEFAULT_SAMPLE_ROWS,
     max_columns: int = DEFAULT_MAX_COLUMNS,
     top_k: int = DEFAULT_TOP_K,
+    sheet: str | None = None,
 ) -> dict[str, Any]:
     """Summarise the structure and quality of a local data file.
 
@@ -82,6 +83,10 @@ def profile_dataset_tool(
             reported.
         top_k: How many of the most frequent values to list per categorical
             column.
+        sheet: For Excel workbooks, the name of the sheet to profile. Defaults
+            to the first sheet, which is often a title or notes page rather
+            than the data. The result lists every available sheet, so if the
+            one profiled looks empty or wrong, call again naming another.
 
     Returns:
         A profile with file info, shape, per-column detail, and duplicate row
@@ -93,6 +98,7 @@ def profile_dataset_tool(
             sample_rows=sample_rows,
             max_columns=max_columns,
             top_k=top_k,
+            sheet=sheet,
             root=_root,
         )
     except ProfileError as exc:

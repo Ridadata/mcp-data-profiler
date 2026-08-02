@@ -130,7 +130,21 @@ def _exact_row_count(path: Path, fmt: str) -> int | None:
     return None
 
 
-def _load(path: Path, fmt: str, sample_rows: int | None) -> tuple[pd.DataFrame, bool]:
+def list_excel_sheets(path: Path) -> list[str]:
+    """Return the sheet names in a workbook, or ``[]`` if they can't be read."""
+    try:
+        with pd.ExcelFile(path) as workbook:
+            return list(workbook.sheet_names)
+    except Exception:
+        return []
+
+
+def _load(
+    path: Path,
+    fmt: str,
+    sample_rows: int | None,
+    sheet: str | int | None = None,
+) -> tuple[pd.DataFrame, bool]:
     """Load ``path`` into a DataFrame, returning ``(frame, was_sampled)``."""
     # Read one extra row so we can tell "exactly at the limit" from "truncated".
     limit = None if sample_rows is None else sample_rows + 1
@@ -147,7 +161,7 @@ def _load(path: Path, fmt: str, sample_rows: int | None) -> tuple[pd.DataFrame, 
         elif fmt == "jsonl":
             frame = pd.read_json(path, lines=True, nrows=limit)
         elif fmt == "excel":
-            frame = pd.read_excel(path, nrows=limit)
+            frame = pd.read_excel(path, sheet_name=sheet if sheet is not None else 0, nrows=limit)
         else:  # pragma: no cover - detect_format already rejected these
             raise ProfileError(f"Unsupported format {fmt!r}")
     except ProfileError:
@@ -296,6 +310,7 @@ def profile_dataset(
     sample_rows: int | None = DEFAULT_SAMPLE_ROWS,
     max_columns: int = DEFAULT_MAX_COLUMNS,
     top_k: int = DEFAULT_TOP_K,
+    sheet: str | int | None = None,
     root: Path | None = None,
 ) -> dict[str, Any]:
     """Profile a dataset file and return a compact, JSON-safe summary.
@@ -305,6 +320,8 @@ def profile_dataset(
         sample_rows: Row cap for profiling; ``None`` reads the whole file.
         max_columns: Cap on how many columns are described in detail.
         top_k: How many frequent values to list per categorical column.
+        sheet: For Excel, which sheet to profile (name or zero-based index).
+            Defaults to the first sheet.
         root: If given, ``path`` must resolve inside this directory.
 
     Raises:
@@ -326,18 +343,43 @@ def profile_dataset(
         raise ProfileError(f"Not a file: {target}")
 
     fmt = detect_format(target)
-    frame, was_sampled = _load(target, fmt, sample_rows)
+
+    sheets: list[str] = []
+    if fmt == "excel":
+        sheets = list_excel_sheets(target)
+        if sheet is not None and isinstance(sheet, str) and sheets and sheet not in sheets:
+            raise ProfileError(f"No sheet named {sheet!r}. Available sheets: {sheets}")
+
+    frame, was_sampled = _load(target, fmt, sample_rows, sheet=sheet)
     total_rows = _exact_row_count(target, fmt) if was_sampled else len(frame)
 
     all_columns = list(frame.columns)
     shown = all_columns[:max_columns]
 
+    file_info: dict[str, Any] = {
+        "name": target.name,
+        "format": fmt,
+        "size_bytes": target.stat().st_size,
+    }
+
+    if sheets:
+        # A workbook's first sheet is often a title or notes page. Profiling it
+        # silently and saying nothing would report an empty dataset as clean,
+        # so always name the sheet used and list the alternatives.
+        if isinstance(sheet, int):
+            profiled = sheets[sheet] if 0 <= sheet < len(sheets) else str(sheet)
+        else:
+            profiled = sheet if sheet is not None else sheets[0]
+        file_info["sheet_profiled"] = profiled
+        if len(sheets) > 1:
+            file_info["available_sheets"] = sheets
+            file_info["sheets_note"] = (
+                f"This workbook has {len(sheets)} sheets; only {profiled!r} was "
+                "profiled. Pass sheet=<name> to profile a different one."
+            )
+
     profile: dict[str, Any] = {
-        "file": {
-            "name": target.name,
-            "format": fmt,
-            "size_bytes": target.stat().st_size,
-        },
+        "file": file_info,
         "shape": {
             "rows_profiled": len(frame),
             "total_rows": total_rows,

@@ -348,6 +348,57 @@ def test_quoted_commas_do_not_break_comma_detection(tmp_path):
     assert profile["shape"]["rows_profiled"] == 3
 
 
+# --- multi-sheet Excel -----------------------------------------------------
+
+
+@pytest.fixture
+def workbook(tmp_path):
+    """A workbook shaped like real ones: a notes page first, data after."""
+    path = tmp_path / "book.xlsx"
+    with pd.ExcelWriter(path) as writer:
+        pd.DataFrame({"Notes: source is the world bank": []}).to_excel(
+            writer, sheet_name="About", index=False
+        )
+        pd.DataFrame({"country": ["FR", "MA", "US"], "co2": [4.6, 1.7, 15.2]}).to_excel(
+            writer, sheet_name="Data", index=False
+        )
+    return path
+
+
+def test_multi_sheet_workbook_discloses_other_sheets(workbook):
+    """Silently profiling only sheet 1 would report an empty file as clean."""
+    profile = profile_dataset(workbook)
+
+    info = profile["file"]
+    assert info["sheet_profiled"] == "About"
+    assert info["available_sheets"] == ["About", "Data"]
+    assert "sheet=" in info["sheets_note"]
+
+
+def test_named_sheet_is_profiled(workbook):
+    profile = profile_dataset(workbook, sheet="Data")
+
+    assert profile["file"]["sheet_profiled"] == "Data"
+    assert profile["shape"]["rows_profiled"] == 3
+    assert {c["name"] for c in profile["columns"]} == {"country", "co2"}
+
+
+def test_unknown_sheet_name_lists_the_real_ones(workbook):
+    with pytest.raises(ProfileError, match="Available sheets"):
+        profile_dataset(workbook, sheet="Nope")
+
+
+def test_single_sheet_workbook_has_no_sheet_noise(tmp_path):
+    path = tmp_path / "one.xlsx"
+    pd.DataFrame({"a": [1, 2]}).to_excel(path, index=False, sheet_name="Only")
+
+    info = profile_dataset(path)["file"]
+
+    assert info["sheet_profiled"] == "Only"
+    assert "available_sheets" not in info
+    assert "sheets_note" not in info
+
+
 # --- other formats ---------------------------------------------------------
 
 
