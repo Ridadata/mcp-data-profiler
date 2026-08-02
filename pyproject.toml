@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-data-profiler"
+version = "0.1.0"
+description = "MCP server that profiles local datasets (CSV, Parquet, JSON, Excel) so AI agents can understand data without reading raw rows."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Rida Aderkane" }]
+keywords = ["mcp", "model-context-protocol", "data-profiling", "pandas", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+dependencies = [
+    "mcp>=2.0.0",
+    # Works on both pandas 2.x and 3.x; string dtype differs between them.
+    "pandas>=2.0",
+    "pyarrow>=14.0",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/Ridadata/mcp-data-profiler"
+Issues = "https://github.com/Ridadata/mcp-data-profiler/issues"
+
+[project.scripts]
+mcp-data-profiler = "mcp_data_profiler.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_data_profiler"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
