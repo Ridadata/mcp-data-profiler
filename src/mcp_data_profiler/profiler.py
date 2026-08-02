@@ -12,6 +12,7 @@ import json
 import math
 import os
 from collections import Counter
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +68,7 @@ def _sniff_delimiter(path: Path) -> str:
     """
     try:
         with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
-            sample = [line for _, line in zip(range(50), handle)]
+            sample = list(islice(handle, 50))
     except OSError:
         return ","
 

@@ -295,9 +295,7 @@ def test_root_blocks_traversal_escape(tmp_path):
 def test_semicolon_delimited_csv(tmp_path):
     """European open data is usually semicolon-separated."""
     path = tmp_path / "eu.csv"
-    path.write_text(
-        "Date;Station;Delay\n2024-01;Paris;3.5\n2024-02;Lyon;4.1\n", encoding="utf-8"
-    )
+    path.write_text("Date;Station;Delay\n2024-01;Paris;3.5\n2024-02;Lyon;4.1\n", encoding="utf-8")
 
     profile = profile_dataset(path)
 

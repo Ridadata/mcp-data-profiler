@@ -1,18 +1,53 @@
+<div align="center">
+
 # mcp-data-profiler
 
-An [MCP](https://modelcontextprotocol.io) server that lets an AI agent **understand a dataset without reading it**.
+**Let an AI agent understand a dataset without reading it.**
 
-Point it at a CSV, Parquet, JSON, or Excel file and it returns a compact structured profile — types, ranges, missing values, and likely data-quality problems — instead of raw rows.
+An [MCP](https://modelcontextprotocol.io) server that turns a CSV, Parquet, JSON, or Excel file
+into a compact structured profile — types, ranges, missing values, and likely data-quality
+problems — instead of raw rows.
 
-## The problem
+[![CI](https://github.com/Ridadata/mcp-data-profiler/actions/workflows/ci.yml/badge.svg)](https://github.com/Ridadata/mcp-data-profiler/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/mcp-data-profiler.svg)](https://pypi.org/project/mcp-data-profiler/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-server-orange.svg)](https://modelcontextprotocol.io)
 
-To let an agent reason about a data file, you normally paste rows into the conversation. That is expensive, truncates on anything large, and still leaves the model guessing at column types and null rates.
+</div>
 
-A 5,000-row CSV is ~240,000 characters of raw rows. The profile of that same file is **2,391 characters** — 100× smaller — and answers more:
+---
 
-```
+## Overview
+
+To let an AI agent reason about a data file, you normally paste rows into the conversation.
+That is expensive, truncates on anything large, and still leaves the model guessing at column
+types and null rates.
+
+This server answers the question directly. One tool call returns a structured summary that is
+orders of magnitude smaller than the data and says more about it:
+
+| Dataset | Raw file | Profile | Reduction | Time |
+| --- | ---: | ---: | ---: | ---: |
+| Google Play Store (2.3M rows × 24 cols) | 645 MB | 13 KB | **49,205×** | 1.9 s |
+| SNCF punctuality (10,687 rows × 26 cols) | 2 MB | 13 KB | 189× | 0.2 s |
+| Orders sample (5,000 rows × 6 cols) | 241 KB | 2.3 KB | 104× | 0.1 s |
+
+The 645 MB file cannot go into a context window at any price. It is fully characterised here in
+under two seconds.
+
+## Demo
+
+<!--
+  Animated demo placeholder.
+  Record with:  asciinema rec demo.cast  →  agg demo.cast docs/demo.gif
+  Then replace the console block below with:  ![Demo](docs/demo.gif)
+-->
+
+```console
+$ # in Claude Code, Claude Desktop, or any MCP client:
 you:  what's in data/orders.csv?
-       └─ profile_dataset(path="data/orders.csv")
+      └─ profile_dataset(path="data/orders.csv")
 
 5,000 rows × 6 columns, no duplicate rows.
 
@@ -24,15 +59,55 @@ you:  what's in data/orders.csv?
   notes            float64  —               ⚠ entirely null
 ```
 
-Three real problems surfaced before any analysis started: a column that never varies, one that is completely empty, and a date column that will sort as text — so `"2024-10-01" < "2024-9-01"` — silently corrupting any time-based result.
+Three real problems surfaced before any analysis began: a column that never varies, one that is
+entirely empty, and a date column that sorts as text — so `"2024-10-01" < "2024-9-01"` — silently
+corrupting any time-based result.
 
-## Install
+## Features
 
-Requires Python 3.10+.
+- **Six data-quality flags** — constant, all-null, probable ID, mixed types, and numbers or dates
+  stored as text.
+- **Full column statistics** — dtype, null count and percentage, distinct count, sample values,
+  quartiles for numerics, ranges for dates, frequent values for categories.
+- **Bounded output** — the response stays small no matter how wide the input, and always reports
+  what it truncated.
+- **Honest sampling** — large files are sampled, but never silently; the true row count is always
+  included.
+- **Five formats, eleven extensions** — `.csv` `.tsv` `.txt` `.parquet` `.pq` `.json` `.jsonl`
+  `.ndjson` `.xlsx` `.xlsm` `.xls`.
+- **Path confinement** — optional `--root` restricts profiling to a single directory.
+- **Zero configuration** — no database, no index, no warm-up. Point it at a file.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A["MCP client<br/>Claude Code, Claude Desktop"]
+    B["server.py<br/>MCP adapter"]
+    C["profiler.py<br/>pure pandas, no MCP"]
+    D[("Local files<br/>CSV, Parquet<br/>JSON, Excel")]
+
+    A -->|"profile_dataset(path)"| B
+    B -->|"validate, confine to --root"| C
+    C -->|"sampled read"| D
+    D -->|"DataFrame"| C
+    C -->|"bounded JSON profile"| B
+    B -->|"tool result"| A
+```
+
+All profiling logic lives in `profiler.py`, which imports nothing from MCP. It is unit-testable
+without a protocol harness and usable as an ordinary Python library. `server.py` is only the
+adapter.
+
+## Installation
+
+Requires **Python 3.10+**.
 
 ```bash
 pip install git+https://github.com/Ridadata/mcp-data-profiler.git
 ```
+
+> **Note** — a PyPI release is pending; install from GitHub until then.
 
 ### Claude Code
 
@@ -40,9 +115,9 @@ pip install git+https://github.com/Ridadata/mcp-data-profiler.git
 claude mcp add data-profiler -- mcp-data-profiler
 ```
 
-### Claude Desktop / other MCP clients
+### Claude Desktop and other MCP clients
 
-Add to your client's MCP config:
+Add to your client's MCP configuration:
 
 ```json
 {
@@ -54,40 +129,52 @@ Add to your client's MCP config:
 }
 ```
 
-To confine it to one directory, add `"args": ["--root", "/path/to/your/data"]`.
+To confine the server to one directory, add `"args": ["--root", "/path/to/your/data"]`.
 
-Then just ask about a file — *"profile data/orders.csv"*, *"what's wrong with this dataset?"*, *"which columns have missing values?"*
+## Usage
 
-## The tool
+Once registered, ask in plain language:
 
-### `profile_dataset(path, sample_rows=50000, max_columns=100, top_k=5, sheet=None)`
+- *"Profile `data/orders.csv`"*
+- *"Which columns have missing values?"*
+- *"Is this dataset clean enough to model?"*
 
-| Argument | Default | Meaning |
-| --- | --- | --- |
-| `path` | — | File to profile |
-| `sample_rows` | `50000` | Rows to read. `null` reads everything (exact, slower) |
-| `max_columns` | `100` | Cap on columns described, so wide tables stay small |
-| `top_k` | `5` | Frequent values listed per categorical column |
-| `sheet` | first sheet | Which Excel sheet to profile, by name |
+### Tool reference
 
-**Formats:** `.csv` `.tsv` `.parquet` `.json` `.jsonl` `.ndjson` `.xlsx` `.xls`
+**`profile_dataset(path, sample_rows=50000, max_columns=100, top_k=5, sheet=None)`**
 
-**Per column:** dtype · null count and % · distinct count · sample values · min/max/mean/std/quartiles for numbers · min/max for dates · top values for categories
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `path` | `str` | *required* | File to profile |
+| `sample_rows` | `int \| null` | `50000` | Rows to read. `null` reads everything — exact, slower |
+| `max_columns` | `int` | `100` | Cap on columns described, so wide tables stay small |
+| `top_k` | `int` | `5` | Frequent values listed per categorical column |
+| `sheet` | `str \| null` | first sheet | Which Excel sheet to profile, by name |
 
-**Flags raised:**
+### Quality flags
 
 | Flag | Meaning |
 | --- | --- |
 | `all_null` | Column is entirely empty |
-| `constant` | Only ever one value |
-| `high_cardinality_possible_id` | Nearly all values distinct — an identifier, not a feature |
+| `constant` | Only ever one value — no signal |
+| `high_cardinality_possible_id` | Nearly all values distinct; an identifier, not a feature |
 | `numeric_stored_as_text` | Numbers typed as strings; comparisons and sorting will be wrong |
 | `date_stored_as_text` | Dates typed as strings; same problem |
 | `mixed_types` | One column holding several unrelated Python types |
 
-### Example output
+### As a Python library
 
-Real output, abbreviated:
+```python
+from mcp_data_profiler import profile_dataset
+
+profile = profile_dataset("data/orders.csv", sample_rows=None)
+print(profile["shape"])          # {'rows_profiled': 5000, 'total_rows': 5000, 'columns': 6}
+print(profile["duplicate_rows"]) # 0
+```
+
+## Example output
+
+Real output from `data/orders.csv`, abbreviated:
 
 ```json
 {
@@ -127,24 +214,41 @@ Real output, abbreviated:
 }
 ```
 
+When a file is sampled, the profile also carries `"sampled": true`, the true `total_rows`, and a
+`sampling_note` saying so.
+
 ## Design notes
 
-**Bounded output.** The point is to cost less than the data itself, so the response is capped regardless of input width, and long strings are truncated. Near-unique columns skip the frequent-values list, since every count would be 1.
+**Bounded output.** The tool must cost less than the data it describes, so the response is capped
+regardless of input width and long strings are truncated. Near-unique columns skip the
+frequent-values list, since every count would be `1`.
 
-**Honest sampling.** Large files are profiled from a sample, but the result always carries `"sampled": true` and the true row count — a silently sampled statistic is a wrong statistic. Row counts come from Parquet metadata or a newline scan, never a full read.
+**Honest sampling.** Large files are profiled from a sample, but the result always carries
+`"sampled": true` alongside the true row count — a silently sampled statistic is a wrong
+statistic. Row counts come from Parquet metadata or a newline scan, never a full read.
 
-**No silent wrong answers.** The same rule applies wherever a default could mislead. A workbook's first sheet is often a title page, so every Excel profile names the sheet it used and lists the others rather than reporting an empty sheet as a clean dataset. CSV delimiters are detected by testing candidates for a stable column count, which handles the semicolon files common in European open data without the header-mangling that character-frequency sniffers cause.
+**No silent wrong answers.** The same rule governs every default that could mislead. A workbook's
+first sheet is often a title page, so Excel profiles always name the sheet used and list the
+others rather than reporting an untouched sheet as a clean dataset. CSV delimiters are inferred by
+testing candidates for a stable column count, which handles the semicolon files common in European
+open data without the header-mangling that character-frequency sniffers cause.
 
-**Path safety.** `--root` confines profiling to one directory. Paths are canonicalised first, so `..` and symlinks cannot escape.
+**Path safety.** `--root` confines profiling to one directory. Paths are canonicalised before the
+check, so `..` and symlinks cannot escape it.
 
 ## Limitations
 
-- **Read-only, local files only.** No databases, no URLs, no writes.
-- **Sampled by default.** Statistics reflect the first 50,000 rows unless you pass `sample_rows=null`.
+- **Read-only, local files.** No databases, no URLs, no writes.
+- **Sampled by default.** Statistics reflect the first 50,000 rows unless you pass
+  `sample_rows=null`.
 - **Row-oriented.** No cross-column correlations, outlier detection, or plots.
-- **pandas parsing rules apply.** The profile shows what pandas sees, which is what your own code will see. Notably, `"NA"`, `"N/A"`, and `"None"` are read as *missing*, so a region column containing `"NA"` for North America will report nulls. That is a real trap worth knowing about, and this tool surfaces it rather than hiding it.
-- **Nested JSON** is not flattened; unhashable cells make the duplicate check inapplicable (reported as `null`).
-- **One Excel sheet at a time.** The profile names the sheet it read and lists the rest; pass `sheet` to switch.
+- **pandas parsing rules apply.** The profile shows what pandas sees, which is what your own code
+  will see. Notably `"NA"`, `"N/A"`, and `"None"` are read as *missing*, so a region column
+  containing `"NA"` for North America will report nulls. That trap is surfaced, not hidden.
+- **Nested JSON is not flattened.** Unhashable cells make the duplicate check inapplicable, and it
+  is reported as `null`.
+- **One Excel sheet per call.** The profile names the sheet read and lists the rest; pass `sheet`
+  to switch.
 
 ## Development
 
@@ -152,20 +256,26 @@ Real output, abbreviated:
 git clone https://github.com/Ridadata/mcp-data-profiler.git
 cd mcp-data-profiler
 pip install -e ".[dev]"
-pytest
+
+pytest                                  # 36 tests
+ruff check src tests demo.py            # lint
+ruff format --check src tests demo.py   # formatting
+python demo.py                          # profile sample files locally
 ```
 
-`profiler.py` holds all logic and imports nothing from MCP, so it is testable directly and usable as a plain library:
+CI runs the suite on Python 3.10–3.13 (Linux) plus Windows and macOS, and performs a real stdio
+handshake against the built server to confirm it starts and advertises its tool.
 
-```python
-from mcp_data_profiler import profile_dataset
-profile_dataset("data.csv")
-```
+Issues and pull requests are welcome.
 
-`server.py` is only the MCP adapter.
+## Roadmap
 
-Issues and PRs welcome.
+- [ ] Publish to PyPI and the official MCP registry
+- [ ] Cross-column correlation summary for numeric features
+- [ ] Optional full-file exact mode with progress reporting
+- [ ] Multi-sheet Excel profiling in a single call
+- [ ] Gzip and remote (`s3://`, `https://`) sources
 
 ## License
 
-MIT
+[MIT](LICENSE) © Rida Aderkane

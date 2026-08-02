@@ -49,7 +49,7 @@ _root: Path | None = None
         read_only_hint=True,
         # It only ever touches the local filesystem.
         open_world_hint=False,
-    )
+    ),
 )
 def profile_dataset_tool(
     path: str,

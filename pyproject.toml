@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.urls]
 Homepage = "https://github.com/Ridadata/mcp-data-profiler"
@@ -47,3 +47,18 @@ packages = ["src/mcp_data_profiler"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF", "BLE"]
+
+[tool.ruff.lint.per-file-ignores]
+# Reading a data file can fail in ways pandas and its engines do not document
+# exhaustively. These three sites deliberately degrade instead of propagating:
+# a missing row count or sheet list is a nicety, and the demo must survive one
+# bad file to profile the rest.
+"src/mcp_data_profiler/profiler.py" = ["BLE001"]
+"demo.py" = ["BLE001"]
