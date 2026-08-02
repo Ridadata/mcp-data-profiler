@@ -289,6 +289,65 @@ def test_root_blocks_traversal_escape(tmp_path):
         profile_dataset(allowed / ".." / "secret.csv", root=allowed)
 
 
+# --- delimiter and encoding handling ---------------------------------------
+
+
+def test_semicolon_delimited_csv(tmp_path):
+    """European open data is usually semicolon-separated."""
+    path = tmp_path / "eu.csv"
+    path.write_text(
+        "Date;Station;Delay\n2024-01;Paris;3.5\n2024-02;Lyon;4.1\n", encoding="utf-8"
+    )
+
+    profile = profile_dataset(path)
+
+    assert profile["shape"]["columns"] == 3
+    assert [c["name"] for c in profile["columns"]] == ["Date", "Station", "Delay"]
+
+
+def test_pipe_delimited_csv(tmp_path):
+    path = tmp_path / "piped.csv"
+    path.write_text("a|b|c\n1|2|3\n4|5|6\n", encoding="utf-8")
+
+    assert profile_dataset(path)["shape"]["columns"] == 3
+
+
+def test_bom_is_stripped_from_first_column_name(tmp_path):
+    """Excel and public data portals emit a BOM; it must not enter the name."""
+    path = tmp_path / "bom.csv"
+    path.write_text("﻿Date;Value\n2024-01;1\n", encoding="utf-8")
+
+    first = profile_dataset(path)["columns"][0]["name"]
+
+    assert first == "Date"
+    assert not first.startswith("﻿")
+
+
+def test_header_word_is_not_split_on_a_letter(tmp_path):
+    """Regression: a naive sniffer split the header "letter" on its "t"."""
+    path = tmp_path / "single.csv"
+    pd.DataFrame({"letter": list("abcdefghij")}).to_csv(path, index=False)
+
+    profile = profile_dataset(path)
+
+    assert profile["shape"]["columns"] == 1
+    assert profile["columns"][0]["name"] == "letter"
+
+
+def test_quoted_commas_do_not_break_comma_detection(tmp_path):
+    """A comma inside a quoted field must not change the delimiter choice."""
+    path = tmp_path / "quoted.csv"
+    path.write_text(
+        'id,note\n1,"hello, world"\n2,"another, one"\n3,"third, note"\n',
+        encoding="utf-8",
+    )
+
+    profile = profile_dataset(path)
+
+    assert [c["name"] for c in profile["columns"]] == ["id", "note"]
+    assert profile["shape"]["rows_profiled"] == 3
+
+
 # --- other formats ---------------------------------------------------------
 
 

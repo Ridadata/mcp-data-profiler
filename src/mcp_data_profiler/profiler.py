@@ -7,9 +7,11 @@ logic can be unit tested directly and reused as an ordinary library.
 
 from __future__ import annotations
 
+import csv
 import json
 import math
 import os
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -45,8 +47,50 @@ _MAX_STRING_LEN = 80
 _HIGH_CARDINALITY_RATIO = 0.9
 
 
+# Delimiters worth considering for a .csv. Semicolon matters more than it
+# looks: most European open data uses it, because the comma is a decimal mark.
+_CANDIDATE_DELIMITERS = (",", ";", "\t", "|")
+
+
 class ProfileError(Exception):
     """Raised for bad input: missing file, unreadable file, unknown format."""
+
+
+def _sniff_delimiter(path: Path) -> str:
+    """Infer a CSV's delimiter by testing candidates for a consistent shape.
+
+    Deliberately *not* :class:`csv.Sniffer` or ``pandas`` ``sep=None``: those
+    infer from character frequency and will happily split a header like
+    ``letter`` on its ``t``. Here only real delimiter characters are ever
+    considered, and a candidate has to produce a stable column count across
+    many lines before it is accepted, so a wrong guess is very unlikely.
+    """
+    try:
+        with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
+            sample = [line for _, line in zip(range(50), handle)]
+    except OSError:
+        return ","
+
+    sample = [line for line in sample if line.strip()]
+    if not sample:
+        return ","
+
+    best, best_width = ",", 0
+    for delimiter in _CANDIDATE_DELIMITERS:
+        try:
+            widths = [len(row) for row in csv.reader(sample, delimiter=delimiter) if row]
+        except csv.Error:
+            continue
+        if not widths:
+            continue
+        width, hits = Counter(widths).most_common(1)[0]
+        # Demand a majority agree on the column count; free-text rows and
+        # quoted newlines make a few outliers normal.
+        if width > best_width and hits >= max(2, len(widths) * 0.6):
+            best, best_width = delimiter, width
+
+    # best_width <= 1 means nothing split the file, i.e. a single column.
+    return best if best_width > 1 else ","
 
 
 def detect_format(path: Path) -> str:
@@ -92,11 +136,10 @@ def _load(path: Path, fmt: str, sample_rows: int | None) -> tuple[pd.DataFrame, 
     limit = None if sample_rows is None else sample_rows + 1
     try:
         if fmt == "csv":
-            # Be explicit about the delimiter. Passing sep=None would enable
-            # pandas' sniffer, which guesses from a sample and will happily
-            # split a header like "letter" on a stray "t".
-            sep = "\t" if path.suffix.lower() == ".tsv" else ","
-            frame = pd.read_csv(path, sep=sep, nrows=limit)
+            sep = "\t" if path.suffix.lower() == ".tsv" else _sniff_delimiter(path)
+            # utf-8-sig strips the byte-order mark that Excel and many public
+            # data portals emit; without it the first column is named "﻿Date".
+            frame = pd.read_csv(path, sep=sep, nrows=limit, encoding="utf-8-sig")
         elif fmt == "parquet":
             frame = pd.read_parquet(path)
         elif fmt == "json":
