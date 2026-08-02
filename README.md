@@ -266,6 +266,14 @@ python demo.py                          # profile sample files locally
 CI runs the suite on Python 3.10–3.13 (Linux) plus Windows and macOS, and performs a real stdio
 handshake against the built server to confirm it starts and advertises its tool.
 
+### Releasing
+
+Publishing to PyPI is automated via [Trusted Publishing][tp], so no API token is stored in this
+repository. Publishing a GitHub Release triggers `.github/workflows/release.yml`, which builds the
+distributions, verifies the built wheel actually installs and imports, and uploads it.
+
+[tp]: https://docs.pypi.org/trusted-publishers/
+
 Issues and pull requests are welcome.
 
 ## Roadmap

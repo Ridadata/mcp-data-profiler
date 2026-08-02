@@ -1,0 +1,70 @@
+name: Release
+
+# Publishes to PyPI when a GitHub Release is published.
+#
+# Authentication uses PyPI Trusted Publishing (OpenID Connect), so there is no
+# API token stored in this repository. PyPI verifies the workflow's identity
+# directly. See README "Releasing" for the one-time PyPI setup.
+
+on:
+  release:
+    types: [published]
+  # Allows a dry run to TestPyPI without cutting a real release.
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install build tooling
+        run: pip install build twine
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      # A release that fails to install is worse than no release, so verify
+      # the built artifact rather than only the source tree.
+      - name: Check metadata
+        run: twine check dist/*
+
+      - name: Install the wheel and exercise it
+        run: |
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install dist/*.whl
+          /tmp/verify/bin/python - <<'PY'
+          import mcp_data_profiler
+          print("version:", mcp_data_profiler.__version__)
+          assert callable(mcp_data_profiler.profile_dataset)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mcp-data-profiler
+    permissions:
+      # Required for Trusted Publishing; this is what replaces an API token.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
