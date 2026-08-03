@@ -14,7 +14,7 @@ problems — instead of raw rows.
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/mcp-data-profiler.svg)](https://pypi.org/project/mcp-data-profiler/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![MCP](https://img.shields.io/badge/MCP-server-orange.svg)](https://modelcontextprotocol.io)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-listed-orange.svg)](https://registry.modelcontextprotocol.io/v0/servers?search=mcp-data-profiler)
 
 </div>
 
@@ -302,7 +302,7 @@ Issues and pull requests are welcome.
 
 - [x] Publish to PyPI
 - [x] Gzip-compressed inputs (`.csv.gz`, `.jsonl.gz`)
-- [ ] List on the official MCP registry
+- [x] List on the official MCP registry
 - [ ] Cross-column correlation summary for numeric features
 - [ ] Multi-sheet Excel profiling in a single call
 - [ ] Remote sources (`s3://`, `https://`)
