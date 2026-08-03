@@ -24,7 +24,7 @@ from .profiler import (
     profile_dataset,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 mcp = MCPServer(
     name="data-profiler",

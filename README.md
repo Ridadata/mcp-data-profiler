@@ -1,3 +1,5 @@
+<!-- mcp-name: io.github.Ridadata/mcp-data-profiler -->
+
 <div align="center">
 
 # mcp-data-profiler

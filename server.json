@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Ridadata/mcp-data-profiler",
+  "title": "Data Profiler",
+  "description": "Profile local CSV, Parquet, JSON and Excel files into a compact data-quality summary.",
+  "version": "0.1.1",
+  "websiteUrl": "https://github.com/Ridadata/mcp-data-profiler",
+  "repository": {
+    "url": "https://github.com/Ridadata/mcp-data-profiler",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "mcp-data-profiler",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
