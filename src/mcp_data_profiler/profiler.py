@@ -8,6 +8,7 @@ logic can be unit tested directly and reused as an ordinary library.
 from __future__ import annotations
 
 import csv
+import gzip
 import json
 import math
 import os
@@ -57,6 +58,28 @@ class ProfileError(Exception):
     """Raised for bad input: missing file, unreadable file, unknown format."""
 
 
+def _is_gzipped(path: Path) -> bool:
+    return path.suffix.lower() == ".gz"
+
+
+def _open_text(path: Path):
+    """Open a text file, transparently decompressing a ``.gz``.
+
+    Reading a gzip member as plain text yields compressed bytes, which makes
+    delimiter detection and line counting silently wrong rather than failing.
+    """
+    if _is_gzipped(path):
+        return gzip.open(path, "rt", encoding="utf-8-sig", errors="replace", newline="")
+    return path.open("r", encoding="utf-8-sig", errors="replace", newline="")
+
+
+def _open_binary(path: Path):
+    """Open a file for byte scanning, transparently decompressing a ``.gz``."""
+    if _is_gzipped(path):
+        return gzip.open(path, "rb")
+    return path.open("rb")
+
+
 def _sniff_delimiter(path: Path) -> str:
     """Infer a CSV's delimiter by testing candidates for a consistent shape.
 
@@ -67,9 +90,9 @@ def _sniff_delimiter(path: Path) -> str:
     many lines before it is accepted, so a wrong guess is very unlikely.
     """
     try:
-        with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
+        with _open_text(path) as handle:
             sample = list(islice(handle, 50))
-    except OSError:
+    except (OSError, EOFError, gzip.BadGzipFile):
         return ","
 
     sample = [line for line in sample if line.strip()]
@@ -119,11 +142,11 @@ def _exact_row_count(path: Path, fmt: str) -> int | None:
             return pq.ParquetFile(path).metadata.num_rows
         if fmt == "csv":
             # Count newlines in binary chunks, then discount the header.
-            with path.open("rb") as handle:
+            with _open_binary(path) as handle:
                 lines = sum(chunk.count(b"\n") for chunk in iter(lambda: handle.read(1 << 20), b""))
             return max(lines - 1, 0)
         if fmt == "jsonl":
-            with path.open("rb") as handle:
+            with _open_binary(path) as handle:
                 return sum(chunk.count(b"\n") for chunk in iter(lambda: handle.read(1 << 20), b""))
     except Exception:
         # Row count is a nicety; never fail the profile over it.

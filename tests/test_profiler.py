@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 
 import pandas as pd
@@ -343,6 +344,57 @@ def test_quoted_commas_do_not_break_comma_detection(tmp_path):
     profile = profile_dataset(path)
 
     assert [c["name"] for c in profile["columns"]] == ["id", "note"]
+    assert profile["shape"]["rows_profiled"] == 3
+
+
+# --- gzip-compressed input -------------------------------------------------
+
+
+def test_gzipped_csv_is_profiled(tmp_path):
+    path = tmp_path / "a.csv.gz"
+    pd.DataFrame({"n": range(20), "const": ["x"] * 20}).to_csv(
+        path, index=False, compression="gzip"
+    )
+
+    profile = profile_dataset(path)
+
+    assert profile["shape"] == {"rows_profiled": 20, "total_rows": 20, "columns": 2}
+    assert "constant" in _column(profile, "const")["flags"]
+
+
+def test_gzipped_semicolon_csv_detects_delimiter(tmp_path):
+    """Regression: sniffing read the compressed bytes and fell back to comma,
+    collapsing every field into one column named "Date;Station;Delay"."""
+    path = tmp_path / "b.csv.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        handle.write("Date;Station;Delay\n2024-01;Paris;3.5\n2024-02;Lyon;4.1\n")
+
+    profile = profile_dataset(path)
+
+    assert [c["name"] for c in profile["columns"]] == ["Date", "Station", "Delay"]
+
+
+def test_gzipped_sampling_reports_true_total(tmp_path):
+    """Regression: the row count scanned compressed bytes and reported 10
+    rows for a 5,000-row file — a confidently wrong number."""
+    path = tmp_path / "c.csv.gz"
+    pd.DataFrame({"n": range(5000)}).to_csv(path, index=False, compression="gzip")
+
+    profile = profile_dataset(path, sample_rows=100)
+
+    assert profile["sampled"] is True
+    assert profile["shape"]["rows_profiled"] == 100
+    assert profile["shape"]["total_rows"] == 5000
+
+
+def test_gzipped_jsonl_is_profiled(tmp_path):
+    path = tmp_path / "d.jsonl.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        handle.write('{"a": 1}\n{"a": 2}\n{"a": 3}\n')
+
+    profile = profile_dataset(path)
+
+    assert profile["file"]["format"] == "jsonl"
     assert profile["shape"]["rows_profiled"] == 3
 
 

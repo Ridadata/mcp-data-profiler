@@ -45,18 +45,19 @@ under two seconds.
 -->
 
 ```console
-$ # in Claude Code, Claude Desktop, or any MCP client:
-you:  what's in data/orders.csv?
-      └─ profile_dataset(path="data/orders.csv")
+# In Claude Code, Claude Desktop, or any MCP client:
+
+you:  what's in orders.csv?
+      └─ profile_dataset(path="orders.csv")
 
 5,000 rows × 6 columns, no duplicate rows.
 
-  order_id         str      5000 distinct   ⚠ looks like an ID
-  customer_region  str      4 values        AMER 1272, APAC 1257, EMEA 1250
-  amount_eur       float64  2.00–1369.65    median 204.44
-  currency         str      1 value         ⚠ constant ("EUR")
-  ordered_at       str      5000 distinct   ⚠ dates stored as text
-  notes            float64  —               ⚠ entirely null
+  order_id         str      5000 distinct    ⚠ looks like an ID
+  customer_region  str      4 values         AMER/APAC/EMEA/LATAM, 1250 each
+  amount_eur       float64  2.65–1369.65     median 683.65
+  currency         str      1 value          ⚠ constant ("EUR")
+  ordered_at       str      5000 distinct    ⚠ dates stored as text
+  notes            float64  —                ⚠ entirely null
 ```
 
 Three real problems surfaced before any analysis began: a column that never varies, one that is
@@ -74,7 +75,7 @@ corrupting any time-based result.
 - **Honest sampling** — large files are sampled, but never silently; the true row count is always
   included.
 - **Five formats, eleven extensions** — `.csv` `.tsv` `.txt` `.parquet` `.pq` `.json` `.jsonl`
-  `.ndjson` `.xlsx` `.xlsm` `.xls`.
+  `.ndjson` `.xlsx` `.xlsm` `.xls`, plus `.gz` variants of the text formats.
 - **Path confinement** — optional `--root` restricts profiling to a single directory.
 - **Zero configuration** — no database, no index, no warm-up. Point it at a file.
 
@@ -104,10 +105,17 @@ adapter.
 Requires **Python 3.10+**.
 
 ```bash
+pip install mcp-data-profiler
+```
+
+<details>
+<summary>Install the development version</summary>
+
+```bash
 pip install git+https://github.com/Ridadata/mcp-data-profiler.git
 ```
 
-> **Note** — a PyPI release is pending; install from GitHub until then.
+</details>
 
 ### Claude Code
 
@@ -145,7 +153,7 @@ Once registered, ask in plain language:
 
 | Argument | Type | Default | Description |
 | --- | --- | --- | --- |
-| `path` | `str` | *required* | File to profile |
+| `path` | `str` | *required* | File to profile; `.gz` is decompressed transparently |
 | `sample_rows` | `int \| null` | `50000` | Rows to read. `null` reads everything — exact, slower |
 | `max_columns` | `int` | `100` | Cap on columns described, so wide tables stay small |
 | `top_k` | `int` | `5` | Frequent values listed per categorical column |
@@ -174,11 +182,12 @@ print(profile["duplicate_rows"]) # 0
 
 ## Example output
 
-Real output from `data/orders.csv`, abbreviated:
+Verbatim output for the sample dataset produced by `python demo.py`, with three of the six
+columns shown:
 
 ```json
 {
-  "file": { "name": "orders.csv", "format": "csv", "size_bytes": 239846 },
+  "file": { "name": "orders.csv", "format": "csv", "size_bytes": 247263 },
   "shape": { "rows_profiled": 5000, "total_rows": 5000, "columns": 6 },
   "sampled": false,
   "columns": [
@@ -196,23 +205,30 @@ Real output from `data/orders.csv`, abbreviated:
       "dtype": "float64",
       "null_count": 0,
       "null_pct": 0.0,
-      "unique_count": 4755,
+      "unique_count": 1368,
       "stats": {
-        "min": 2.0, "max": 1369.65, "mean": 244.54278, "std": 170.805364,
-        "q25": 118.98, "median": 204.435, "q75": 331.065
-      }
+        "min": 2.65, "max": 1369.65, "mean": 684.2364, "std": 395.254451,
+        "q25": 341.65, "median": 683.65, "q75": 1025.65
+      },
+      "sample_values": [2.65, 39.65, 76.65]
     },
     {
       "name": "currency",
       "dtype": "str",
+      "null_count": 0,
+      "null_pct": 0.0,
       "unique_count": 1,
       "top_values": [{ "value": "EUR", "count": 5000 }],
+      "sample_values": ["EUR", "EUR", "EUR"],
       "flags": ["constant"]
     }
   ],
   "duplicate_rows": 0
 }
 ```
+
+Note that `order_id` carries no `top_values`: for a near-unique column every count would be `1`,
+so the list is omitted rather than padding the response with noise.
 
 When a file is sampled, the profile also carries `"sampled": true`, the true `total_rows`, and a
 `sampling_note` saying so.
@@ -225,13 +241,16 @@ frequent-values list, since every count would be `1`.
 
 **Honest sampling.** Large files are profiled from a sample, but the result always carries
 `"sampled": true` alongside the true row count — a silently sampled statistic is a wrong
-statistic. Row counts come from Parquet metadata or a newline scan, never a full read.
+statistic. Row counts come from Parquet metadata or a raw newline scan, never a full parse into
+memory.
 
 **No silent wrong answers.** The same rule governs every default that could mislead. A workbook's
 first sheet is often a title page, so Excel profiles always name the sheet used and list the
 others rather than reporting an untouched sheet as a clean dataset. CSV delimiters are inferred by
 testing candidates for a stable column count, which handles the semicolon files common in European
-open data without the header-mangling that character-frequency sniffers cause.
+open data without the header-mangling that character-frequency sniffers cause. Compressed files are
+decompressed before either check, since inspecting gzip bytes as text yields a plausible-looking
+answer that is entirely wrong.
 
 **Path safety.** `--root` confines profiling to one directory. Paths are canonicalised before the
 check, so `..` and symlinks cannot escape it.
@@ -257,10 +276,11 @@ git clone https://github.com/Ridadata/mcp-data-profiler.git
 cd mcp-data-profiler
 pip install -e ".[dev]"
 
-pytest                                  # 36 tests
+pytest                                  # 40 tests
 ruff check src tests demo.py            # lint
 ruff format --check src tests demo.py   # formatting
-python demo.py                          # profile sample files locally
+python demo.py                          # profile a generated sample dataset
+python demo.py path/to/your.csv         # profile your own files
 ```
 
 CI runs the suite on Python 3.10–3.13 (Linux) plus Windows and macOS, and performs a real stdio
@@ -278,11 +298,12 @@ Issues and pull requests are welcome.
 
 ## Roadmap
 
-- [ ] Publish to PyPI and the official MCP registry
+- [x] Publish to PyPI
+- [x] Gzip-compressed inputs (`.csv.gz`, `.jsonl.gz`)
+- [ ] List on the official MCP registry
 - [ ] Cross-column correlation summary for numeric features
-- [ ] Optional full-file exact mode with progress reporting
 - [ ] Multi-sheet Excel profiling in a single call
-- [ ] Gzip and remote (`s3://`, `https://`) sources
+- [ ] Remote sources (`s3://`, `https://`)
 
 ## License
 
