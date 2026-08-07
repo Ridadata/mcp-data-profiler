@@ -40,31 +40,25 @@ under two seconds.
 
 ## Demo
 
-<!--
-  Animated demo placeholder.
-  Record with:  asciinema rec demo.cast  →  agg demo.cast docs/demo.gif
-  Then replace the console block below with:  ![Demo](docs/demo.gif)
--->
+`python demo.py` generates a deliberately messy dataset, profiles it, and reports what came back:
 
-```console
-# In Claude Code, Claude Desktop, or any MCP client:
+![A terminal running python demo.py: a 237 KB, 5,000-row CSV is reduced to a 2 KB profile in a
+tenth of a second, with six data-quality findings listed across four columns](docs/demo.gif)
 
-you:  what's in orders.csv?
-      └─ profile_dataset(path="orders.csv")
+The same profiler seen from an MCP client — one question, one `profile_dataset` call, and the file
+is characterised without a single row entering the conversation:
 
-5,000 rows × 6 columns, no duplicate rows.
-
-  order_id         str      5000 distinct    ⚠ looks like an ID
-  customer_region  str      4 values         AMER/APAC/EMEA/LATAM, 1250 each
-  amount_eur       float64  2.65–1369.65     median 683.65
-  currency         str      1 value          ⚠ constant ("EUR")
-  ordered_at       str      5000 distinct    ⚠ dates stored as text
-  notes            float64  —                ⚠ entirely null
-```
+![An MCP client is asked what is in orders.csv: it calls profile_dataset, gets a 2.3 KB profile
+back, and reports every column with its type, range and quality flags](docs/mcp-demo.gif)
 
 Three real problems surfaced before any analysis began: a column that never varies, one that is
 entirely empty, and a date column that sorts as text — so `"2024-10-01" < "2024-9-01"` — silently
 corrupting any time-based result.
+
+<!-- <sub>Both recordings are [VHS](https://github.com/charmbracelet/vhs) tapes —
+[`docs/demo.tape`](docs/demo.tape) and [`docs/mcp-demo.tape`](docs/mcp-demo.tape) — and regenerate
+with two `docker run` lines. The conversation in the second one is scripted, but every figure in
+it comes from a real `profile_dataset` call; see [docs/vhs/README.md](docs/vhs/README.md).</sub> -->
 
 ## Features
 
